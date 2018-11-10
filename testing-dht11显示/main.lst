@@ -1,0 +1,342 @@
+C51 COMPILER V9.54   MAIN                                                                  11/09/2018 21:38:30 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN .\obj\main.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE user\main.c COMPACT OPTIMIZE(8,SPEED) BROWSE INCDIR(.\SRC) DEBUG OBJECTE
+                    -XTEND PRINT(.\main.lst) TABS(2) OBJECT(.\obj\main.obj)
+
+line level    source
+
+   1          /*******************************************************************************/  
+   2          /*
+   3          /*  文 件 名   : main.c
+   4          /*  版 本 号   : v1.0
+   5          /*  作    者   : ao呦
+   6          /*  生成日期   : 2018/10
+   7          /*  最近修改   : 
+   8          /*  功能描述   : 
+   9          /*              说明: 初步完成连接新大陆云平台。控制一个IO口，上传温湿度，OLED屏显示
+  10                          目前问题，DHT11数据不太准确，控制灯亮灭存在延时
+  11          /*              ----------------------------------------------------------------
+  12          /*              10.30:添加风扇，已完成
+  13          /*              11.1：把接收命令放在中断函数里？，
+  14          /*              
+  15          /*           
+  16          /*               
+  17          /*              ----------------------------------------------------------------
+  18          /* 修改历史   :
+  19          /* 日    期   : 
+  20          /* 作    者   : ao呦
+  21          /* --- Email：wya0091@163.com-------------------------------------------*/
+  22          /* 修改内容   : 
+  23          //******************************************************************************/
+  24          #include "dht11.h"
+  25          #include "string.h"
+  26          #include "oled.h"
+  27          
+  28          /*************  本地常量声明  **************/
+  29          #define MAIN_Fosc   22118400L //定义主时钟
+  30          
+  31          #define RX1_Length  128   /* 接收缓冲长度 */
+  32          #define RX2_Length  128   /* 接收缓冲长度 */
+  33          #define UART_BaudRate1  115200UL   /* 波特率 */
+  34          #define UART_BaudRate2  115200UL   /* 波特率 */
+  35          
+  36          
+  37          /*************  本地变量声明  **************/
+  38          u8  xdata RX1_Buffer[RX1_Length]; //接收缓冲
+  39          u8  xdata RX2_Buffer[RX2_Length]; //接收缓冲
+  40          u8  TX1_read,RX1_write; //读写索引(指针).
+  41          u8  TX2_read,RX2_write; //读写索引(指针).
+  42          bit B_TX1_Busy,B_TX2_Busy;
+  43          
+  44          sbit nl_lamp=P4^1;
+  45          sbit nl_fan=P4^2;
+  46          
+  47          
+  48          u8 flag1,j=0,i=0;
+  49          u8 Table_LCD[]="0123456789.";
+  50          u8 humy[4];
+  51          u8 temp[4];
+  52          u8 lamp_key,fan_key;
+  53          /*************  本地函数声明  **************/
+  54          void  UART1_config(u8 brt); // 选择波特率, 2: 使用Timer2做波特率, 其它值: 使用Timer1做波特率.
+C51 COMPILER V9.54   MAIN                                                                  11/09/2018 21:38:30 PAGE 2   
+
+  55          void  UART2_config(u8 brt); // 选择波特率, 2: 使用Timer2做波特率, 其它值: 无效.
+  56          void  PrintString1(u8 *puts);
+  57          void  PrintString2(u8 *puts);
+  58          void  clear(void);
+  59          
+  60          
+  61          
+  62          void PrintByte(u8 dat)
+  63          {
+  64   1              SBUF = dat;
+  65   1              while(!TI);                                        //等待发送完成
+  66   1      }
+  67          
+  68          void port_mode()            // 端口模式
+  69          {
+  70   1        P0M1=0x60; P0M0=0x00;P1M1=0x00; P1M0=0x00;P2M1=0x00; P2M0=0x00;P3M1=0x00; P3M0=0x00;
+  71   1        P4M1=0x00; P4M0=0x00;P5M1=0x00; P5M0=0x00;P6M1=0x00; P6M0=0x00;P7M1=0x00; P7M0=0x00; 
+  72   1      }
+  73          /******初始化************************/
+  74          void Init()
+  75          {
+  76   1        port_mode();
+  77   1        nl_lamp=1;
+  78   1        UART1_config(1);  // 选择波特率, 2: 使用Timer2做波特率, 其它值: 使用Timer1做波特率.
+  79   1        UART2_config(2);  // 选择波特率, 2: 使用Timer2做波特率, 其它值: 无效.
+  80   1        
+  81   1        EA = 1;           //开总中断
+  82   1        flag1=1;
+  83   1        Delay(5);
+  84   1        /*********此处加入OLED显示程序*************/
+  85   1        OLED_Init();  //初始化OLED
+  86   1        OLED_Clear();
+  87   1        //PrintString1("开始\r");
+  88   1      }
+  89          /*****************************************/
+  90          void main()
+  91          {
+  92   1        u8 val;
+  93   1        Init();
+  94   1        while(1)
+  95   1        {
+  96   2          
+  97   2          /******************************************/
+  98   2      //    if(flag1==1)
+  99   2      //    {
+ 100   2      //      flag1=0;
+ 101   2      //      WIFI();   
+ 102   2      //    }
+ 103   2      //    if(flag1==0)
+ 104   2      //    {
+ 105   2      //      if(strstr((char*)RX2_Buffer,"nl_lamp")!=NULL)
+ 106   2      //     {
+ 107   2      //       char* str1=strstr(RX2_Buffer,"nl_lamp"); 
+ 108   2      //       lamp_key=str1[30];
+ 109   2      //       PrintByte(lamp_key);
+ 110   2      //       if(lamp_key=='1')
+ 111   2      //        {
+ 112   2      //          nl_lamp=0;      
+ 113   2      //        }
+ 114   2      //       if(lamp_key=='0')
+ 115   2      //        {
+ 116   2      //          nl_lamp=1;
+C51 COMPILER V9.54   MAIN                                                                  11/09/2018 21:38:30 PAGE 3   
+
+ 117   2      //        }   
+ 118   2      //       clear();             
+ 119   2      //     }
+ 120   2      //     /****************心跳响应***********/
+ 121   2      //     if(strstr((char*)RX2_Buffer,"$#AT#\r")!=NULL)
+ 122   2      //     {
+ 123   2      //       
+ 124   2      //       PrintString2("$OK##\r");
+ 125   2      //       Delay1ms(100);
+ 126   2      //       clear(); 
+ 127   2      //     }
+ 128   2      //     /*******************************************/
+ 129   2           if(strstr((char*)RX2_Buffer,"OK")!=NULL)
+ 130   2           {
+ 131   3             //char* str1=strstr(RX2_Buffer,"nl_fan");  
+ 132   3             //fan_key=str1[29];
+ 133   3             //PrintByte(fan_key);
+ 134   3             //if(fan_key=='1')
+ 135   3              //{
+ 136   3                nl_fan=0;     
+ 137   3              //}
+ 138   3      //       if(fan_key=='0')
+ 139   3      //        {
+ 140   3      //          nl_fan=1;
+ 141   3      //        }   
+ 142   3             //clear();
+ 143   3                        
+ 144   3           }
+ 145   2           
+ 146   2      //     /****************心跳响应***********/
+ 147   2      //     if(strstr((char*)RX2_Buffer,"$#AT#\r")!=NULL)
+ 148   2      //     {
+ 149   2      //       
+ 150   2      //       PrintString2("$OK##\r");
+ 151   2      //       Delay1ms(100);
+ 152   2      //       clear(); 
+ 153   2      //     }
+ 154   2           /************************************************/
+ 155   2           /************DHT11部分******************/
+ 156   2            GetDHT11_Data();
+ 157   2            val=(tempH+tempL+humyH+humyL)&0xff;
+ 158   2            if(val==CheckData)
+ 159   2            {
+ 160   3              humy[0]=Table_LCD[humyH/10];
+ 161   3              humy[1]=Table_LCD[humyH%10];
+ 162   3              PrintString1("温度:");
+ 163   3              PrintString1(temp);
+ 164   3              PrintString1("\r");
+ 165   3              Delay1000ms();
+ 166   3              OLED_ShowString(20,6,temp);
+ 167   3              OLED_ShowCHinese(40,6,19);//℃
+ 168   3              
+ 169   3              temp[0]=Table_LCD[tempH/10];
+ 170   3              temp[1]=Table_LCD[tempH%10];
+ 171   3              PrintString1("湿度:");
+ 172   3              PrintString1(humy);
+ 173   3              PrintString1("\r");
+ 174   3              Delay1000ms();
+ 175   3              OLED_ShowString(75,6,humy);
+ 176   3              OLED_ShowString(95,6,"%RH");
+ 177   3            }
+ 178   2          }
+C51 COMPILER V9.54   MAIN                                                                  11/09/2018 21:38:30 PAGE 4   
+
+ 179   1      }
+ 180              
+ 181          
+ 182          void  SetTimer2Baudraye(u16 dat)  // 选择波特率, 2: 使用Timer2做波特率, 其它值: 使用Timer1做波特率.
+ 183          {
+ 184   1        AUXR &= ~(1<<4);  //Timer stop
+ 185   1        AUXR &= ~(1<<3);  //Timer2 set As Timer
+ 186   1        AUXR |=  (1<<2);  //Timer2 set as 1T mode
+ 187   1        TH2 = dat / 256;
+ 188   1        TL2 = dat % 256;
+ 189   1        IE2  &= ~(1<<2);  //禁止中断
+ 190   1        AUXR |=  (1<<4);  //Timer run enable
+ 191   1      }
+ 192          
+ 193          void  UART1_config(u8 brt)  // 选择波特率, 2: 使用Timer2做波特率, 其它值: 使用Timer1做波特率.
+ 194          {
+ 195   1        u8  i;
+ 196   1        /*********** 波特率使用定时器2 *****************/
+ 197   1        if(brt == 2)
+ 198   1        {
+ 199   2          AUXR |= 0x01;   //S1 BRT Use Timer2;
+ 200   2          SetTimer2Baudraye(65536UL - (MAIN_Fosc / 4) / UART_BaudRate1);
+ 201   2        }
+ 202   1      
+ 203   1        /*********** 波特率使用定时器1 *****************/
+ 204   1        else
+ 205   1        {
+ 206   2          TR1 = 0;
+ 207   2          AUXR &= ~0x01;    //S1 BRT Use Timer1;
+ 208   2          AUXR |=  (1<<6);  //Timer1 set as 1T mode
+ 209   2          TMOD &= ~(1<<6);  //Timer1 set As Timer
+ 210   2          TMOD &= ~0x30;    //Timer1_16bitAutoReload;
+ 211   2          TH1 = (65536UL - (MAIN_Fosc / 4) / UART_BaudRate1) / 256;
+ 212   2          TL1 = (65536UL - (MAIN_Fosc / 4) / UART_BaudRate1) % 256;
+ 213   2          ET1 = 0;  //禁止中断
+ 214   2          INT_CLKO &= ~0x02;  //不输出时钟
+ 215   2          TR1  = 1;
+ 216   2        }
+ 217   1        /*************************************************/
+ 218   1      
+ 219   1        SCON = (SCON & 0x3f) | (1<<6);  // 8位数据, 1位起始位, 1位停止位, 无校验
+ 220   1      //  PS  = 1;  //高优先级中断
+ 221   1        ES  = 1;  //允许中断
+ 222   1        REN = 1;  //允许接收
+ 223   1        P_SW1 = P_SW1 & 0x3f; //切换到 P3.0 P3.1
+ 224   1      //  P_SW1 = (P_SW1 & 0x3f) | (1<<6);  //切换到P3.6 P3.7
+ 225   1      //  P_SW1 = (P_SW1 & 0x3f) | (2<<6);  //切换到P1.6 P1.7 (必须使用内部时钟)
+ 226   1      
+ 227   1        for(i=0; i<RX1_Length; i++)   RX1_Buffer[i] = 0;
+ 228   1        B_TX1_Busy  = 0;
+ 229   1        TX1_read    = 0;
+ 230   1        RX1_write   = 0;
+ 231   1      }
+ 232          void  UART2_config(u8 brt)  // 选择波特率, 2: 使用Timer2做波特率, 其它值: 无效.
+ 233          {
+ 234   1        u8  i;
+ 235   1        /*********** 波特率固定使用定时器2 *****************/
+ 236   1        if(brt == 2)  SetTimer2Baudraye(65536UL - (MAIN_Fosc / 4) / UART_BaudRate2);
+ 237   1      
+ 238   1        S2CON &= ~(1<<7); // 8位数据, 1位起始位, 1位停止位, 无校验
+ 239   1        IE2   |= 1;     //允许中断
+ 240   1        S2CON |= (1<<4);  //允许接收
+C51 COMPILER V9.54   MAIN                                                                  11/09/2018 21:38:30 PAGE 5   
+
+ 241   1        P_SW2 &= ~1;    //切换到 P1.0 P1.1
+ 242   1      //  P_SW2 |= 1;     //切换到 P4.6 P4.7
+ 243   1      
+ 244   1        for(i=0; i<RX2_Length; i++)   RX2_Buffer[i] = 0;
+ 245   1        B_TX2_Busy  = 0;
+ 246   1        TX2_read    = 0;
+ 247   1        RX2_write   = 0;
+ 248   1      }
+ 249          
+ 250          void PrintString1(u8 *puts)
+ 251          {
+ 252   1          for (; *puts != 0;  puts++)
+ 253   1        {
+ 254   2          B_TX1_Busy = 1;   //标志发送忙
+ 255   2          SBUF = *puts;   //发一个字节
+ 256   2          while(B_TX1_Busy);  //等待发送完成
+ 257   2        }
+ 258   1      }
+ 259          
+ 260          void PrintString2(u8 *puts)
+ 261          {
+ 262   1          for (; *puts != 0;  puts++)
+ 263   1        {
+ 264   2          B_TX2_Busy = 1;   //标志发送忙
+ 265   2          S2BUF = *puts;    //发一个字节
+ 266   2          while(B_TX2_Busy);  //等待发送完成
+ 267   2        }
+ 268   1      }
+ 269          /********************* UART1中断函数************************/
+ 270          void UART1_int (void) interrupt UART1_VECTOR
+ 271          {
+ 272   1        if(RI)
+ 273   1        {
+ 274   2          RI = 0;
+ 275   2          RX1_Buffer[RX1_write] = SBUF;
+ 276   2          if(++RX1_write >= RX1_Length) RX1_write = 0;
+ 277   2        }
+ 278   1      
+ 279   1        if(TI)
+ 280   1        {
+ 281   2          TI = 0;
+ 282   2          B_TX1_Busy = 0;
+ 283   2        }
+ 284   1      }
+ 285          
+ 286          /********************* UART2中断函数************************/
+ 287          void UART2_int (void) interrupt UART2_VECTOR
+ 288          {
+ 289   1        if(RI2)
+ 290   1        {
+ 291   2          CLR_RI2();
+ 292   2          RX2_Buffer[RX2_write] = S2BUF;
+ 293   2          if(++RX2_write >= RX2_Length) RX2_write = 0;
+ 294   2        }
+ 295   1      
+ 296   1        if(TI2)
+ 297   1        {
+ 298   2          CLR_TI2();
+ 299   2          B_TX2_Busy = 0;
+ 300   2        }
+ 301   1      
+ 302   1      }
+C51 COMPILER V9.54   MAIN                                                                  11/09/2018 21:38:30 PAGE 6   
+
+ 303          void clear(void)
+ 304          {  
+ 305   1          int i;
+ 306   1          for(i=0; i<RX2_Length; i++)   
+ 307   1          RX2_Buffer[i] = 0;//清除接收缓存
+ 308   1      }
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    632    ----
+   CONSTANT SIZE    =     21    ----
+   XDATA SIZE       =    256    ----
+   PDATA SIZE       =     29    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =      2    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

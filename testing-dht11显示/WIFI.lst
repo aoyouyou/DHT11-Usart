@@ -1,0 +1,62 @@
+C51 COMPILER V9.54   WIFI                                                                  11/05/2018 13:19:50 PAGE 1   
+
+
+C51 COMPILER V9.54, COMPILATION OF MODULE WIFI
+OBJECT MODULE PLACED IN .\obj\WIFI.obj
+COMPILER INVOKED BY: C:\Keil_v5\C51\BIN\C51.EXE SRC\WIFI.c COMPACT OPTIMIZE(8,SPEED) BROWSE INCDIR(.\SRC) DEBUG OBJECTEX
+                    -TEND PRINT(.\WIFI.lst) TABS(2) OBJECT(.\obj\WIFI.obj)
+
+line level    source
+
+   1          #include "WIFI.h"
+   2          
+   3          
+   4          
+   5          
+   6          
+   7          
+   8          /*************************************************************/
+   9          void WIFI(void)
+  10          {
+  11   1        
+  12   1        RX2_write = 0;PrintString2(WiFi_AT);
+*** ERROR C202 IN LINE 12 OF SRC\WIFI.c: 'RX2_write': undefined identifier
+  13   1        Delay(2);
+  14   1        PrintString1(RX2_Buffer);   clear();
+  15   1      
+  16   1      
+  17   1        RX2_write = 0;PrintString2(WiFi_CWMODE);
+  18   1        Delay(2);PrintString1(RX2_Buffer);  clear();
+  19   1      
+  20   1      
+  21   1        RX2_write = 0;PrintString2(WiFi_CWJAP);
+  22   1        Delay(6);PrintString1(RX2_Buffer); clear();
+  23   1      
+  24   1      
+  25   1        RX2_write = 0;PrintString2(WiFi_CIFSR);
+  26   1        Delay(3);PrintString1(RX2_Buffer);  clear();
+  27   1      
+  28   1      
+  29   1        RX2_write = 0;PrintString2(WiFi_CIPSTART);
+  30   1        Delay(6);PrintString1(RX2_Buffer); clear();
+  31   1      
+  32   1      
+  33   1        RX2_write = 0;PrintString2(WiFi_CIPMODE);
+  34   1        Delay(2);PrintString1(RX2_Buffer);  clear();
+  35   1      
+  36   1      
+  37   1        RX2_write = 0;PrintString2(WiFi_CIPSEND);
+  38   1        Delay(2);PrintString1(RX2_Buffer);
+  39   1        if(strstr((char*)RX2_Buffer,"ERROR")!=NULL)
+  40   1        {
+  41   2          flag1=1;
+  42   2        }
+  43   1        clear();   
+  44   1        RX2_write = 0;PrintString2(WiFi_CONNECT);
+  45   1        Delay(3);PrintString1(RX2_Buffer); clear();   
+  46   1      }
+  47          
+  48          
+  49          
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  1 ERROR(S)

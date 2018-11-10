@@ -1,0 +1,6 @@
+".\obj\delay.obj",
+".\obj\dht11.obj",
+".\obj\main.obj",
+".\obj\oled.obj" 
+TO ".\obj\STC15W4K-DHT11-DEMO" 
+PRINT(".\STC15W4K-DHT11-DEMO.m51") RAMSIZE(256) 
