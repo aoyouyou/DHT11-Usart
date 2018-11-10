@@ -61,7 +61,6 @@ void Init()
 	/*********此处加入OLED显示程序*************/
 	OLED_Init();	//初始化OLED
 	OLED_Clear();
-	//PrintString1("开始\r");
 }
 /*****************************************/
 void main()
